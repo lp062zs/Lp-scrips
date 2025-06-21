@@ -1,0 +1,235 @@
+-- Carregar a biblioteca Rayfield
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/lp062zs/Lp-scrips/refs/heads/main/README.md'))()
+
+-- Serviços
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- Estados das funcionalidades
+local States = {
+    AutoPickupItems = false,
+    AutoPickupEssence = false,
+    AutoPickupCoin = false,
+    AutoPickupBloodfruit = false,
+    AutoPickupLog = false,
+    AutoPickupWood = false,
+    AutoPickupLeaves = false,
+    AutoPickupCoal = false
+}
+
+-- Função para coletar itens gerais
+local function autoPickupItems()
+    while States.AutoPickupItems do
+        task.wait()
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if not rootPart then return end
+
+            -- Procurar itens no Workspace
+            for _, item in ipairs(Workspace:GetChildren()) do
+                if not States.AutoPickupItems then break end
+                if item:FindFirstChild("Pickup") and (item:IsA("BasePart") or item:IsA("UnionOperation")) then
+                    if (rootPart.Position - item.Position).Magnitude < 50 then
+                        ReplicatedStorage.Events.Pickup:FireServer(item)
+                    end
+                end
+            end
+
+            -- Procurar itens na pasta Items
+            local itemsFolder = Workspace:FindFirstChild("Items")
+            if itemsFolder then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if not States.AutoPickupItems then break end
+                    if item:FindFirstChild("Pickup") and (item:IsA("BasePart") or item:IsA("UnionOperation")) then
+                        if (rootPart.Position - item.Position).Magnitude < 50 then
+                            ReplicatedStorage.Events.Pickup:FireServer(item)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Função para coletar Essência (XP)
+local function autoPickupEssence()
+    while States.AutoPickupEssence do
+        task.wait()
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if not rootPart then return end
+
+            -- Procurar essência no Workspace
+            for _, item in ipairs(Workspace:GetChildren()) do
+                if not States.AutoPickupEssence then break end
+                if item:FindFirstChild("Pickup") and item.Name == "Essence" then
+                    if (rootPart.Position - item.Position).Magnitude < 50 then
+                        ReplicatedStorage.Events.Pickup:FireServer(item)
+                    end
+                end
+            end
+
+            -- Procurar na pasta Items
+            local itemsFolder = Workspace:FindFirstChild("Items")
+            if itemsFolder then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if not States.AutoPickupEssence then break end
+                    if item:FindFirstChild("Pickup") and item.Name == "Essence" then
+                        if (rootPart.Position - item.Position).Magnitude < 50 then
+                            ReplicatedStorage.Events.Pickup:FireServer(item)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Função para coletar Moedas
+local function autoPickupCoin()
+    while States.AutoPickupCoin do
+        task.wait()
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if not rootPart then return end
+
+            -- Procurar moedas no Workspace
+            for _, item in ipairs(Workspace:GetChildren()) do
+                if not States.AutoPickupCoin then break end
+                if item:FindFirstChild("Pickup") and item.Name == "Coin" then
+                    if (rootPart.Position - item.Position).Magnitude < 50 then
+                        ReplicatedStorage.Events.Pickup:FireServer(item)
+                    end
+                end
+            end
+
+            -- Procurar na pasta Items
+            local itemsFolder = Workspace:FindFirstChild("Items")
+            if itemsFolder then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if not States.AutoPickupCoin then break end
+                    if item:FindFirstChild("Pickup") and item.Name == "Coin" then
+                        if (rootPart.Position - item.Position).Magnitude < 50 then
+                            ReplicatedStorage.Events.Pickup:FireServer(item)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Função Anti-AFK
+local function antiAfk()
+    local VirtualUser = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end
+
+-- Criar a interface
+local Window = Rayfield:CreateWindow({
+    Name = "DEVIL HUB",
+    LoadingTitle = "Carregando DEVIL HUB...",
+    LoadingSubtitle = "by DEVIL Script Team",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "DEVILHubConfig",
+        FileName = "Settings"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvite",
+        RememberJoins = true
+    }
+})
+
+-- Aba principal
+local MainTab = Window:CreateTab("Coleta Automática", 4483362458) -- Ícone de sacola
+
+-- Seção de Coleta Geral
+MainTab:CreateSection("Coleta Automática")
+
+MainTab:CreateToggle({
+    Name = "Itens Gerais",
+    CurrentValue = States.AutoPickupItems,
+    Flag = "AutoPickupItemsToggle",
+    Callback = function(Value)
+        States.AutoPickupItems = Value
+        if Value then
+            task.spawn(autoPickupItems)
+        end
+    end
+})
+
+MainTab:CreateToggle({
+    Name = "Essência (XP)",
+    CurrentValue = States.AutoPickupEssence,
+    Flag = "AutoPickupEssenceToggle",
+    Callback = function(Value)
+        States.AutoPickupEssence = Value
+        if Value then
+            task.spawn(autoPickupEssence)
+        end
+    end
+})
+
+MainTab:CreateToggle({
+    Name = "Moedas",
+    CurrentValue = States.AutoPickupCoin,
+    Flag = "AutoPickupCoinToggle",
+    Callback = function(Value)
+        States.AutoPickupCoin = Value
+        if Value then
+            task.spawn(autoPickupCoin)
+        end
+    end
+})
+
+MainTab:CreateToggle({
+    Name = "Bloodfruit",
+    CurrentValue = States.AutoPickupBloodfruit,
+    Flag = "AutoPickupBloodfruitToggle",
+    Callback = function(Value)
+        States.AutoPickupBloodfruit = Value
+        if Value then
+            -- Implemente similar às funções acima
+        end
+    end
+})
+
+-- Adicione aqui os outros tipos de itens...
+
+-- Seção de Utilidades
+MainTab:CreateSection("Utilidades")
+
+MainTab:CreateToggle({
+    Name = "Anti-AFK",
+    CurrentValue = true,
+    Flag = "AntiAFKToggle",
+    Callback = function(Value)
+        if Value then
+            antiAfk()
+        end
+    end
+})
+
+-- Notificação de Início
+Rayfield:Notify({
+    Title = "DEVIL HUB INICIADO",
+    Content = "Bem-vindo! Hacks ativados.",
+    Duration = 5,
+    Image = 4483362458
+})
+
+-- Ativar Anti-AFK por padrão
+antiAfk()
