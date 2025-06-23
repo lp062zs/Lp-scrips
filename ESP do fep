@@ -1,0 +1,276 @@
+-- Configurações
+local settings = {
+    -- Configurações de ESP
+    boxColor = Color3.fromRGB(255, 0, 0),
+    textColor = Color3.fromRGB(255, 255, 255),
+    showTeam = false,
+    showName = true,
+    lineThickness = 2,
+    textSize = 18,
+    
+    -- Configurações de Aimbot
+    aimPart = "Head", -- Parte do corpo para mirar
+    fov = 100, -- Campo de visão para detecção (reduzido para mobile)
+    smoothness = 0.25, -- Suavidade do movimento
+    autofire = true, -- Atirar automaticamente
+    triggerKey = Enum.KeyCode.ButtonR2, -- Tecla para ativar (R2 em mobile)
+    aimbotEnabled = true, -- Ativar/desativar aimbot
+    drawFOV = false -- Mostrar círculo do FOV (opcional)
+}
+
+-- Serviços
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+
+-- Variáveis
+local localPlayer = Players.LocalPlayer
+local espObjects = {}
+local aiming = false
+local fovCircle = Drawing.new("Circle") if settings.drawFOV then
+    fovCircle.Visible = true
+    fovCircle.Radius = settings.fov
+    fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    fovCircle.Color = Color3.fromRGB(255, 255, 255)
+    fovCircle.Thickness = 1
+    fovCircle.Filled = false
+end
+
+-- Função para verificar se o jogador é inimigo
+local function isEnemy(player)
+    if settings.showTeam then return true end
+    return player.Team ~= localPlayer.Team
+end
+
+-- Cria objetos ESP para um jogador
+local function createEsp(player)
+    local drawings = {
+        top = Drawing.new("Line"),
+        bottom = Drawing.new("Line"),
+        left = Drawing.new("Line"),
+        right = Drawing.new("Line"),
+        text = Drawing.new("Text")
+    }
+    
+    for _, line in pairs({drawings.top, drawings.bottom, drawings.left, drawings.right}) do
+        line.Thickness = settings.lineThickness
+        line.Color = settings.boxColor
+        line.Visible = false
+    end
+    
+    drawings.text.Color = settings.textColor
+    drawings.text.Size = settings.textSize
+    drawings.text.Outline = true
+    drawings.text.Center = true
+    drawings.text.Visible = false
+    
+    espObjects[player] = drawings
+end
+
+-- Atualiza a posição do ESP (tamanho ampliado)
+local function updateEsp(player, drawings)
+    local character = player.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local head = character:FindFirstChild("Head")
+    if not humanoidRootPart or not head then return end
+    
+    -- Calcular posições com tamanho ampliado
+    local rootPos, rootVis = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+    local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
+    local feetPos = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.5, 0))
+    
+    if not rootVis then
+        for _, drawing in pairs(drawings) do
+            drawing.Visible = false
+        end
+        return
+    end
+    
+    -- Calcular dimensões ampliadas
+    local height = (headPos.Y - feetPos.Y) * 1.5
+    local width = height * 0.6
+    
+    -- Configurar linhas
+    local corners = {
+        topLeft = Vector2.new(rootPos.X - width/2, headPos.Y),
+        topRight = Vector2.new(rootPos.X + width/2, headPos.Y),
+        bottomLeft = Vector2.new(rootPos.X - width/2, feetPos.Y),
+        bottomRight = Vector2.new(rootPos.X + width/2, feetPos.Y)
+    }
+    
+    drawings.top.From = corners.topLeft
+    drawings.top.To = corners.topRight
+    drawings.bottom.From = corners.bottomLeft
+    drawings.bottom.To = corners.bottomRight
+    drawings.left.From = corners.topLeft
+    drawings.left.To = corners.bottomLeft
+    drawings.right.From = corners.topRight
+    drawings.right.To = corners.bottomRight
+    
+    -- Configurar texto
+    if settings.showName then
+        drawings.text.Position = Vector2.new(rootPos.X, corners.topLeft.Y - 25)
+        drawings.text.Text = player.Name
+        drawings.text.Visible = true
+    end
+    
+    -- Ativar visibilidade
+    if isEnemy(player) then
+        drawings.top.Visible = true
+        drawings.bottom.Visible = true
+        drawings.left.Visible = true
+        drawings.right.Visible = true
+    end
+end
+
+-- Aimbot avançado
+local function getClosestEnemy()
+    local closestPlayer = nil
+    local closestDistance = settings.fov
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and isEnemy(player) then
+            local character = player.Character
+            if character and character:FindFirstChild(settings.aimPart) then
+                local partPos, onScreen = Camera:WorldToViewportPoint(character[settings.aimPart].Position)
+                if onScreen then
+                    local distance = (Vector2.new(partPos.X, partPos.Y) - center).Magnitude
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+-- Mira suavizada
+local function smoothAim(targetPos)
+    local currentPos = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local delta = (targetPos - currentPos) * settings.smoothness
+    return currentPos + delta
+end
+
+-- Ativar Aimbot
+local function activateAimbot()
+    if not settings.aimbotEnabled then return end
+    
+    local target = getClosestEnemy()
+    if target and target.Character and target.Character:FindFirstChild(settings.aimPart) then
+        local partPos = Camera:WorldToViewportPoint(target.Character[settings.aimPart].Position)
+        local aimPos = smoothAim(Vector2.new(partPos.X, partPos.Y))
+        
+        -- Mover mira
+        mousemoverel(aimPos.X - Camera.ViewportSize.X/2, aimPos.Y - Camera.ViewportSize.Y/2)
+        
+        -- Autofire
+        if settings.autofire then
+            mouse1press()
+            task.wait(0.05)
+            mouse1release()
+        end
+    end
+end
+
+-- Loop principal
+RunService.RenderStepped:Connect(function()
+    -- Atualizar ESP
+    for player, drawings in pairs(espObjects) do
+        if player ~= localPlayer and player:IsDescendantOf(Players) then
+            updateEsp(player, drawings)
+        else
+            for _, drawing in pairs(drawings) do
+                drawing.Visible = false
+            end
+        end
+    end
+    
+    -- Atualizar FOV Circle
+    if settings.drawFOV then
+        fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        fovCircle.Radius = settings.fov
+    end
+    
+    -- Aimbot
+    if aiming and settings.aimbotEnabled then
+        activateAimbot()
+    end
+end)
+
+-- Controles para mobile
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == settings.triggerKey then
+        aiming = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == settings.triggerKey then
+        aiming = false
+    end
+end)
+
+-- Gerenciar jogadores
+Players.PlayerAdded:Connect(function(player)
+    createEsp(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espObjects[player] then
+        for _, drawing in pairs(espObjects[player]) do
+            drawing:Remove()
+        end
+        espObjects[player] = nil
+    end
+end)
+
+-- Inicializar para jogadores existentes
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= localPlayer then
+        createEsp(player)
+    end
+end
+
+-- Função de limpeza
+local function cleanup()
+    for player, drawings in pairs(espObjects) do
+        for _, drawing in pairs(drawings) do
+            drawing:Remove()
+        end
+    end
+    espObjects = {}
+    if fovCircle then
+        fovCircle:Remove()
+    end
+end
+
+-- Desativar ao reiniciar
+game:GetService("Players").LocalPlayer.CharacterAdded:Connect(cleanup)
+game:GetService("Players").LocalPlayer.CharacterRemoving:Connect(cleanup)
+
+-- UI simples (opcional)
+local function createUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Parent = game.CoreGui
+    
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Size = UDim2.new(0, 200, 0, 50)
+    TextLabel.Position = UDim2.new(0, 10, 0, 10)
+    TextLabel.BackgroundTransparency = 0.5
+    TextLabel.Text = "Arsenal Mobile Hack\nESP: ON | Aimbot: ON"
+    TextLabel.TextColor3 = Color3.new(1, 1, 1)
+    TextLabel.Parent = ScreenGui
+    
+    return ScreenGui
+end
+
+createUI()
+
+return cleanup
