@@ -1,0 +1,220 @@
+-- Configurações
+local settings = {
+    -- Configurações de ESP
+    boxColor = Color3.fromRGB(255, 0, 0),  -- Vermelho para inimigos
+    lineThickness = 2,
+    
+    -- Configurações de Aimbot
+    aimPart = "Head",
+    fov = 100,
+    smoothness = 0.25,
+    autofire = true,
+    triggerKey = Enum.KeyCode.ButtonR2,
+    aimbotEnabled = true
+}
+
+-- Serviços
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+
+-- Variáveis
+local localPlayer = Players.LocalPlayer
+local espObjects = {}
+local aiming = false
+
+-- Função para verificar se o jogador é inimigo
+local function isEnemy(player)
+    return player.Team ~= localPlayer.Team
+end
+
+-- Cria objetos ESP apenas com caixa
+local function createEsp(player)
+    local drawings = {
+        top = Drawing.new("Line"),
+        bottom = Drawing.new("Line"),
+        left = Drawing.new("Line"),
+        right = Drawing.new("Line")
+    }
+    
+    for _, line in pairs(drawings) do
+        line.Thickness = settings.lineThickness
+        line.Color = settings.boxColor
+        line.Visible = false
+    end
+    
+    espObjects[player] = drawings
+end
+
+-- Atualiza a posição do ESP
+local function updateEsp(player, drawings)
+    if not isEnemy(player) then
+        for _, drawing in pairs(drawings) do
+            drawing.Visible = false
+        end
+        return
+    end
+    
+    local character = player.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local head = character:FindFirstChild("Head")
+    if not humanoidRootPart or not head then return end
+    
+    -- Calcular posições
+    local rootPos, rootVis = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+    local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
+    local feetPos = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.5, 0))
+    
+    if not rootVis then
+        for _, drawing in pairs(drawings) do
+            drawing.Visible = false
+        end
+        return
+    end
+    
+    -- Calcular dimensões
+    local height = (headPos.Y - feetPos.Y) * 1.5
+    local width = height * 0.6
+    
+    -- Configurar linhas
+    local corners = {
+        topLeft = Vector2.new(rootPos.X - width/2, headPos.Y),
+        topRight = Vector2.new(rootPos.X + width/2, headPos.Y),
+        bottomLeft = Vector2.new(rootPos.X - width/2, feetPos.Y),
+        bottomRight = Vector2.new(rootPos.X + width/2, feetPos.Y)
+    }
+    
+    drawings.top.From = corners.topLeft
+    drawings.top.To = corners.topRight
+    drawings.bottom.From = corners.bottomLeft
+    drawings.bottom.To = corners.bottomRight
+    drawings.left.From = corners.topLeft
+    drawings.left.To = corners.bottomLeft
+    drawings.right.From = corners.topRight
+    drawings.right.To = corners.bottomRight
+    
+    -- Ativar visibilidade apenas para inimigos
+    if isEnemy(player) then
+        drawings.top.Visible = true
+        drawings.bottom.Visible = true
+        drawings.left.Visible = true
+        drawings.right.Visible = true
+    end
+end
+
+-- Aimbot (mantido igual)
+local function getClosestEnemy()
+    local closestPlayer = nil
+    local closestDistance = settings.fov
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and isEnemy(player) then
+            local character = player.Character
+            if character and character:FindFirstChild(settings.aimPart) then
+                local partPos, onScreen = Camera:WorldToViewportPoint(character[settings.aimPart].Position)
+                if onScreen then
+                    local distance = (Vector2.new(partPos.X, partPos.Y) - center).Magnitude
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+local function smoothAim(targetPos)
+    local currentPos = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local delta = (targetPos - currentPos) * settings.smoothness
+    return currentPos + delta
+end
+
+local function activateAimbot()
+    if not settings.aimbotEnabled then return end
+    
+    local target = getClosestEnemy()
+    if target and target.Character and target.Character:FindFirstChild(settings.aimPart) then
+        local partPos = Camera:WorldToViewportPoint(target.Character[settings.aimPart].Position)
+        local aimPos = smoothAim(Vector2.new(partPos.X, partPos.Y))
+        
+        mousemoverel(aimPos.X - Camera.ViewportSize.X/2, aimPos.Y - Camera.ViewportSize.Y/2)
+        
+        if settings.autofire then
+            mouse1press()
+            task.wait(0.05)
+            mouse1release()
+        end
+    end
+end
+
+-- Loop principal
+RunService.RenderStepped:Connect(function()
+    -- Atualizar ESP
+    for player, drawings in pairs(espObjects) do
+        if player ~= localPlayer and player:IsDescendantOf(Players) then
+            updateEsp(player, drawings)
+        else
+            for _, drawing in pairs(drawings) do
+                drawing.Visible = false
+            end
+        end
+    end
+    
+    -- Aimbot
+    if aiming and settings.aimbotEnabled then
+        activateAimbot()
+    end
+end)
+
+-- Controles
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == settings.triggerKey then
+        aiming = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == settings.triggerKey then
+        aiming = false
+    end
+end)
+
+-- Gerenciar jogadores
+Players.PlayerAdded:Connect(function(player)
+    createEsp(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espObjects[player] then
+        for _, drawing in pairs(espObjects[player]) do
+            drawing:Remove()
+        end
+        espObjects[player] = nil
+    end
+end)
+
+-- Inicializar
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= localPlayer then
+        createEsp(player)
+    end
+end
+
+-- Limpeza
+local function cleanup()
+    for player, drawings in pairs(espObjects) do
+        for _, drawing in pairs(drawings) do
+            drawing:Remove()
+        end
+    end
+    espObjects = {}
+end
+
+return cleanup
